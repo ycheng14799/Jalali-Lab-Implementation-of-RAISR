@@ -22,6 +22,13 @@ def make_dataset(dir):
                 images.append(path)
     return images
 
+# Function to check if HR and LR lists match 
+def sanityCheckHRLR(HRlist, LRlist):
+    if (len(HRlist) != len(LRlist)):
+        print("Sizes of HR and LR lists do not match")
+        return False
+    return True 
+    
 # Python opencv library (cv2) cv2.COLOR_BGR2YCrCb has different parameters with MATLAB color convertion.
 # In order to have a fair comparison with the benchmark, we wrote these functions by ourselves.
 def BGR2YCbCr(im):
@@ -64,8 +71,10 @@ def YCbCr2BGR(im):
     return out
 
 def im2double(im):
+    # Get maximum and minimum values 
     min_val = np.min(im.ravel())
     max_val = np.max(im.ravel())
+    # Scale image to a 0.0 to 1.0 range
     if im.dtype == 'uint8':
         out = im.astype('float') / 255
     elif im.dtype == 'uint16':
@@ -92,9 +101,14 @@ def Gaussian2d(shape=(3,3),sigma=0.5):
     return h
 
 def modcrop(im,modulo):
+    # Get shape of image  
     shape = im.shape
+    # Define new dimensions 
+    # Ensure images are divisble
+    # by desired scale factor 
     size0 = shape[0] - shape[0] % modulo
     size1 = shape[1] - shape[1] % modulo
+    # Return mod cropped image 
     if len(im.shape) == 2:
         out = im[0:size0, 0:size1]
     else:
@@ -102,15 +116,22 @@ def modcrop(im,modulo):
     return out
 
 def Prepare(im, patchSize, R):
+    # Define scaled down patch margin 
     patchMargin = floor(patchSize/2)
-    H, W = im.shape
-    imL = imresize(im, 1 / R, interp='bicubic')
-    # cv2.imwrite('Compressed.jpg', imL, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
-    # imL = cv2.imread('Compressed.jpg')
-    # imL = imL[:,:,0]   # Optional: Compress the image
-    imL = imresize(imL, (H, W), interp='bicubic')
+    # Obtain HR image dimensions 
+    H, W = np.multiply(im.shape, R)
+    
+    # Obtain compressed version 
+    # cv2.imwrite('Compressed.jpg', im, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+    # im = cv2.imread('Compressed.jpg')
+    # im = im[:,:,0]   # Optional: Compress the image
+    
+    # Scale up LR images using cheap scaling algorithm 
+    imL = imresize(im, (H, W), interp='bicubic')
+    # Scale intensity to a 0 to 1 range 
     imL = im2double(imL)
     im_LR = imL
+    # Return cheaply scaled images 
     return im_LR
 
 def is_greyimage(im):
