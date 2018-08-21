@@ -63,7 +63,9 @@ with open("Filter/Qfactor_coh"+str(R), "rb") as cp:
 
 # Get HR and LR test data
 filelistLR = make_dataset(testLRPath)
+filelistLR.sort()
 filelistHR = make_dataset(testHRPath)
+filelistHR.sort()
 # Zip together HR and LR lists
 # Index 0: LR
 # Index 1: HR
