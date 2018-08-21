@@ -170,7 +170,7 @@ for imagecount in range(0, HRLRlist.shape[1]):
     #im_HR = Dog1(im_HR)                # optional: sharpen the image
     # Obtain gradient 
     im_GX,im_GY = np.gradient(im_LR)
-    # Train 
+    # Calculate Q and V for each key j and pixel type t 
     Q, V, mark = TrainProcess(im_LR, im_HR, im_GX, im_GY,patchSize, w, Qangle, Qstrength,Qcoherence, stre, cohe, R, Q, V, mark)  # get Q, V of each patch
 
 # optional: Using patch symmetry for nearly 8* more learning examples
@@ -198,6 +198,8 @@ for imagecount in range(0, HRLRlist.shape[1]):
 
 
 print('Get the filter of RAISR:')
+# Iterate through each type of filter 
+# Actual training: Minimize cost function 
 for t in range(R*R):
     for j in range(Qangle*Qstrength*Qcoherence):
         while(True):

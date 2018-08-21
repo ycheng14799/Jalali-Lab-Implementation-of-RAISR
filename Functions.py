@@ -403,25 +403,38 @@ def QuantizationProcess (im_GX, im_GY,patchSize, patchNumber,w , quantization):
 # Training procedure for each image (use numba.jit to speed up)
 @nb.jit(nopython=True, parallel=True)
 def TrainProcess (im_LR, im_HR, im_GX, im_GY,patchSize, w, Qangle, Qstrength,Qcoherence, stre, cohe, R, Q, V, mark):
+    # Get height and width of HR image 
     H, W = im_HR.shape
+    # Iterate through patches 
     for i1 in range(H-2*floor(patchSize/2)):
         for j1 in range(W-2*floor(patchSize/2)):
+            # Get indices of patches 
             idx1 = (slice(i1,(i1+2*floor(patchSize/2)+1)),slice(j1,(j1+2*floor(patchSize/2)+1)))
+            # Get LR patch 
             patch = im_LR[idx1]
+            # Get patch gradients 
             patchX = im_GX[idx1]
             patchY = im_GY[idx1]
+            # Get entry from hash-table using gradient statistics 
             theta,lamda,u=HashTable(patchX, patchY, w, Qangle, Qstrength,Qcoherence, stre, cohe)
+            # flatten array
             patch1 = patch.ravel()
+            # Reshape array 
             patchL = patch1.reshape((1,patch1.size))
             t = (i1 % R) * R +(j1 % R)
             j = theta * Qstrength * Qcoherence + lamda * Qcoherence + u
             tx = np.int(t)
             jx = np.int(j)
+            # A matrix
             A = np.dot(patchL.T, patchL)
+            # Append to A for key j and pixel type t 
             Q[tx,jx] += A
+            # B matrix 
             b1=patchL.T * im_HR[i1+floor(patchSize/2),j1+floor(patchSize/2)]
             b = b1.reshape((b1.size))
+            # Append to V for key j and pixel type t 
             V[tx,jx] += b
             mark[tx,jx] = mark[tx,jx]+1
+    # Return Q, V, and mark 
     return Q,V,mark
 

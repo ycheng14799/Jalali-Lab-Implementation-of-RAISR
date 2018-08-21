@@ -88,6 +88,12 @@ def TestProcess(i):
         offset2_i = offset2[i * batch:imHR.size]
         grid = np.tile(gridon[..., None], [1, 1, imHR.size - (iteration - 1) * batch]) + np.tile(offset_i,[patchSize, patchSize,1])
     f = im_LR.ravel()[grid]
+    # Use gradient statistics to find theta, lamda, and miu 
+    # theta: angle
+    # lamda: strength 
+    # miu: coherence
+    # theta, lamda, miu used to access hash table for appropriate filter 
+    # Gradient 
     gx = im_GX.ravel()[grid]
     gy = im_GY.ravel()[grid]
     gx = gx.reshape((1, patchSize * patchSize, gx.shape[2]))
@@ -100,23 +106,29 @@ def TestProcess(i):
     idx = (-w).argsort()
     w = w[np.arange(np.shape(w)[0])[:, np.newaxis], idx]
     v = v[np.arange(np.shape(v)[0])[:, np.newaxis, np.newaxis], np.arange(np.shape(v)[1])[np.newaxis, :, np.newaxis], idx[:,np.newaxis,:]]
+    # Gradient angle 
     thelta = np.arctan(v[:, 1, 0] / v[:, 0, 0])
     thelta[thelta < 0] = thelta[thelta < 0] + pi
     thelta = np.floor(thelta / (pi / Qangle))
     thelta[thelta > Qangle - 1] = Qangle - 1
     thelta[thelta < 0] = 0
+    # Gradient strength 
     lamda = w[:, 0]
+    # Gradient coherence 
     u = (np.sqrt(w[:, 0]) - np.sqrt(w[:, 1])) / (np.sqrt(w[:, 0]) + np.sqrt(w[:, 1]) + 0.00000000000000001)
     lamda = np.searchsorted(stre, lamda)
     u = np.searchsorted(cohe, u)
+    # Calculate j: Quantize 
     j = thelta * Qstrength * Qcoherence + lamda * Qcoherence + u
     j = j.astype('int')
     offset2_i = np.unravel_index(offset2_i, (H, W))
     t = ((offset2_i[0] - patchMargin) % R) * R + ((offset2_i[1] - patchMargin) % R)
+    # Obtain appropriate filter 
     filtertj = h[t, j]
     filtertj = filtertj[:, :, np.newaxis]
     patch = f.reshape((1, patchSize * patchSize, gx.shape[2]))
     patch = np.transpose(patch, (2, 0, 1))
+    # Apply filter to patch 
     result = np.matmul(patch, filtertj)
     return result
 
@@ -211,6 +223,7 @@ for image in range(0, filelist.shape[1]):
     im_blending = np.clip(im_blending, 0, 1)
     
     # Generate results
+    '''
     if len(im_uint8HR.shape) > 2:
         result_ycbcr = np.zeros((H, W, 3))
         result_ycbcr[:, :, 1:3] = im_ycbcrHR[:, :, 1:3]
@@ -220,27 +233,35 @@ for image in range(0, filelist.shape[1]):
     else:
         result_RAISR = im_result[region] * 255
         result_RAISR = result_RAISR.astype('uint8')
+    '''
+    # Filtered result 
     im_result = im_result*255
     im_result = np.rint(im_result).astype('uint8')
+    # Bicubic result 
     im_bicubic = im_bicubic*255
     im_bicubic = np.rint(im_bicubic).astype('uint8')
+    # Blended result 
     im_blending = im_blending * 255
     im_blending = np.rint(im_blending).astype('uint8')
     # Measure reconstruction quality
+    # Calculate PSNR values 
     PSNR_bicubic = compare_psnr(imHR[region], im_bicubic[region])
     PSNR_result = compare_psnr(imHR[region], im_result[region])
     PSNR_blending = compare_psnr(imHR[region], im_blending[region])
     PSNR_blending = max(PSNR_result, PSNR_blending)
     # Save RAISR reconstruction 
     createFolder('./results/')
-    cv2.imwrite('results/' + os.path.splitext(os.path.basename(filelist[0][image]))[0] + '_result.bmp', result_RAISR)
+    #cv2.imwrite('results/' + os.path.splitext(os.path.basename(filelist[0][image]))[0] + '_result.bmp', result_RAISR)
+    cv2.imwrite('results/' + os.path.splitext(os.path.basename(filelist[0][image]))[0] + '_bicubic.bmp', im_bicubic[region])
+    cv2.imwrite('results/' + os.path.splitext(os.path.basename(filelist[0][image]))[0] + '_result.bmp', im_result[region])
+    cv2.imwrite('results/' + os.path.splitext(os.path.basename(filelist[0][image]))[0] + '_blended.bmp', im_blending[region])
     psnrRAISR.append(PSNR_result)
     psnrBicubic.append(PSNR_bicubic)
     psnrBlending.append(PSNR_blending)
 
     imagecount += 1
 
-
+# Calculate mean of psnr values 
 RAISR_psnrmean = np.array(psnrBlending).mean()
 Bicubic_psnrmean = np.array(psnrBicubic).mean()
 
