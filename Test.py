@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
 
 """
-Implementation of RAISR in Python by Jalali-Lab  
+Implementation of RAISR in Python by Jalali-Lab
 
-[RAISR](http://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=7744595) (Rapid and Accurate Image Super 
-Resolution) is an image processing algorithm published by Google Research in 2016. With sufficient 
+[RAISR](http://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=7744595) (Rapid and Accurate Image Super
+Resolution) is an image processing algorithm published by Google Research in 2016. With sufficient
 trainingData, consisting of low and high resolution image pairs, RAISR algorithm tries to learn
-a set of filters which can be applied to an input image that is not in the training set, 
-to produce a higher resolution version of it. The source code released here is the Jalali-Lab 
-implementation of the RAISR algorithm in Python 3.x. The implementation presented here achieved 
-performance results that are comparable to that presented in Google's research paper 
-(with ± 0.1 dB in PSNR). 
+a set of filters which can be applied to an input image that is not in the training set,
+to produce a higher resolution version of it. The source code released here is the Jalali-Lab
+implementation of the RAISR algorithm in Python 3.x. The implementation presented here achieved
+performance results that are comparable to that presented in Google's research paper
+(with ± 0.1 dB in PSNR).
 
-Just-in-time (JIT) compilation employing JIT numba is used to speed up the Python code. A very 
-parallelized Python code employing multi-processing capabilities is used to speed up the testing 
-process. The code has been tested on GNU/Linux and Mac OS X 10.13.2 platforms. 
+Just-in-time (JIT) compilation employing JIT numba is used to speed up the Python code. A very
+parallelized Python code employing multi-processing capabilities is used to speed up the testing
+process. The code has been tested on GNU/Linux and Mac OS X 10.13.2 platforms.
 
 Author: Sifeng He, Jalali-Lab, Department of Electrical and Computer Engineering, UCLA
 
 Copyright
 ---------
-RAISR is developed in Jalali Lab at University of California, Los Angeles (UCLA).  
+RAISR is developed in Jalali Lab at University of California, Los Angeles (UCLA).
 More information about the technique can be found in our group website: http://www.photonics.ucla.edu
 
 
@@ -42,7 +42,8 @@ from multiprocessing import Pool
 
 warnings.filterwarnings('ignore')
 
-testPath = 'testData'
+testLRPath = 'testDataLR'
+testHRPath = 'testDataHR'
 
 R = 2  # Upscaling factor=2 R = [ 2 3 4 ]
 patchSize = 11  # Pacth Size=11
@@ -60,7 +61,13 @@ with open("Filter/Qfactor_str"+str(R), "rb") as sp:
 with open("Filter/Qfactor_coh"+str(R), "rb") as cp:
     cohe = pickle.load(cp)
 
-filelist = make_dataset(testPath)
+# Get HR and LR test data
+filelistLR = make_dataset(testLRPath)
+filelistHR = make_dataset(testHRPath)
+# Zip together HR and LR lists
+# Index 0: LR
+# Index 1: HR
+filelist = np.array((filelistLR, filelistHR))
 
 wGaussian = Gaussian2d([patchSize, patchSize], 2)
 wGaussian = wGaussian/wGaussian.max()
@@ -77,9 +84,9 @@ def TestProcess(i):
         offset2_i = offset2[i * batch:i * batch + batch]
         grid = np.tile(gridon[..., None], [1, 1, batch]) + np.tile(offset_i, [patchSize, patchSize, 1])
     else:
-        offset_i = offset[i * batch:im.size]
-        offset2_i = offset2[i * batch:im.size]
-        grid = np.tile(gridon[..., None], [1, 1, im.size - (iteration - 1) * batch]) + np.tile(offset_i,[patchSize, patchSize,1])
+        offset_i = offset[i * batch:imHR.size]
+        offset2_i = offset2[i * batch:imHR.size]
+        grid = np.tile(gridon[..., None], [1, 1, imHR.size - (iteration - 1) * batch]) + np.tile(offset_i,[patchSize, patchSize,1])
     f = im_LR.ravel()[grid]
     gx = im_GX.ravel()[grid]
     gy = im_GY.ravel()[grid]
@@ -115,81 +122,118 @@ def TestProcess(i):
 
 
 print('Begin to process images:')
-for image in filelist:
+for image in range(0, filelist.shape[1]):
     print('\r', end='')
     print('' * 60, end='')
-    print('\r Processing ' + str(imagecount) + '/' + str(len(filelist)) + ' image (' + image + ')')
-    im_uint8 = cv2.imread(image)
-    im_mp = mpimg.imread(image)
-    if len(im_mp.shape) == 2:
-        im_uint8 = im_uint8[:,:,0]
-    im_uint8 = modcrop(im_uint8, R)
-    if len(im_uint8.shape) > 2:
-        im_ycbcr = BGR2YCbCr(im_uint8)
-        im = im_ycbcr[:, :, 0]
+    print('\r Processing ' + str(imagecount) + '/' + str(filelist.shape[1]) + ' LR image (' + filelist[0][image] + ') HR image (' + filelist[1][image] + ')')
+        
+    # Read in images
+    # Low Resolution 
+    im_uint8LR = cv2.imread(filelist[0][image])
+    im_mpLR = mpimg.imread(filelist[0][image])
+    # High Resolution: Fourier ground truth 
+    im_uint8HR = cv2.imread(filelist[1][image])
+    im_mpHR = mpimg.imread(filelist[1][image])
+    # Prepare Images
+    # LR images 
+    if len(im_mpLR.shape) == 2:
+        im_uint8LR = im_uint8LR[:,:,0]
+    im_uint8LR = modcrop(im_uint8LR, R)
+    if len(im_uint8LR.shape) > 2:
+        im_ycbcrLR = BGR2YCbCr(im_uint8LR)
+        imLR = im_ycbcrLR[:, :, 0]
     else:
-        im = im_uint8
-    im_double = im2double(im)
-    H, W = im.shape
+        imLR = im_uint8LR
+    # HR images 
+    if len(im_mpHR.shape) == 2:
+        im_uint8HR = im_uint8HR[:,:,0]
+    im_uint8HR = modcrop(im_uint8HR, R)
+    if len(im_uint8HR.shape) > 2:
+        im_ycbcrHR = BGR2YCbCr(im_uint8HR)
+        imHR = im_ycbcrHR[:, :, 0]
+    else:
+        imHR = im_uint8HR
+    # Scale LR input image to a 0.0 to 1.0 range
+    im_doubleLR = im2double(imLR)
+    # Retrieve the width and height of the HR image
+    H, W = imHR.shape
+    # Generate region
     region = (slice(patchMargin, H - patchMargin), slice(patchMargin, W - patchMargin))
     start = time.time()
-    imL = imresize(im_double, 1 / R, interp='bicubic', mode='F')
-    im_bicubic = imresize(imL, (H, W), interp='bicubic', mode='F')
+    # Bicubic interpolation from LR image to HR image
+    im_bicubic = imresize(im_doubleLR, (H, W), interp='bicubic', mode='F')
+    # Cast image into a 64-bit float
     im_bicubic = im_bicubic.astype('float64')
+    # Clip image values to a 0.0 to 1.0 range
     im_bicubic = np.clip(im_bicubic, 0, 1)
+    # Save bicubic interpolated image into im_LR
     im_LR = np.zeros((H+patchSize-1,W+patchSize-1))
     im_LR[(patchMargin):(H+patchMargin),(patchMargin):(W+patchMargin)] = im_bicubic
+    
+    # Preperation of enhancement using filters
+    # Initialize filtered image with matrix of zeros 
     im_result = np.zeros((H, W))
+    # Generate gradients of upscaled LR image 
     im_GX, im_GY = np.gradient(im_LR)
+    # Generate matrix of indices for upscaled LR images 
     index = np.array(range(im_LR.size)).reshape(im_LR.shape)
+    # Flatten indices of indices matrix 
     offset = np.array(index[0:H, 0:W].ravel())
-    offset2 = np.array(range(im.size))
+    # Get array of indices of HR image 
+    offset2 = np.array(range(imHR.size))
+    # Get patch matrix 
     gridon = index[0:patchSize, 0:patchSize]
+    # Define batch number
     batch = 2000
-    iteration = ceil(im.size / batch + 0.000000000000001)
+    # Calculate number of iterations 
+    iteration = ceil(imHR.size / batch + 0.000000000000001)
+    # Set result to empty array 
     im_result = np.array([])
-
+    # Define i to be a range from 0 to number of iterations 
     i = range(iteration)
+    # Initialize threading based interface 
     p = Pool()
+    # Enhancement using filters
     im_in = p.map(TestProcess, i)
-
+    # Combine pieces of enhancement 
     for i in range(iteration):
         im_result = np.append(im_result, im_in[i])
-
+    # Reshape filter enhanced 
     im_result = im_result.reshape(H, W)
+    # Clip filter enhanced 
     im_result = np.clip(im_result, 0, 1)
-
+    # Calculate elapsed time
     end = time.time()
     print(end - start)
-
+    # Blend filter enhanced and plain interpolated images
     im_blending = Blending2(im_bicubic, im_result)
     # im_blending = Backprojection(imL, im_blending, 50) #Optional: Backprojection, which can slightly improve PSNR, especilly for large upscaling factor.
     im_blending = np.clip(im_blending, 0, 1)
-
-    if len(im_uint8.shape) > 2:
+    
+    # Generate results
+    if len(im_uint8HR.shape) > 2:
         result_ycbcr = np.zeros((H, W, 3))
-        result_ycbcr[:, :, 1:3] = im_ycbcr[:, :, 1:3]
+        result_ycbcr[:, :, 1:3] = im_ycbcrHR[:, :, 1:3]
         result_ycbcr[:, :, 0] = im_blending * 255
         result_ycbcr = result_ycbcr[region].astype('uint8')
         result_RAISR = YCbCr2BGR(result_ycbcr)
     else:
         result_RAISR = im_result[region] * 255
         result_RAISR = result_RAISR.astype('uint8')
-
     im_result = im_result*255
     im_result = np.rint(im_result).astype('uint8')
     im_bicubic = im_bicubic*255
     im_bicubic = np.rint(im_bicubic).astype('uint8')
     im_blending = im_blending * 255
     im_blending = np.rint(im_blending).astype('uint8')
-
-    PSNR_bicubic = compare_psnr(im[region], im_bicubic[region])
-    PSNR_result = compare_psnr(im[region], im_result[region])
-    PSNR_blending = compare_psnr(im[region], im_blending[region])
+    # Measure reconstruction quality
+    PSNR_bicubic = compare_psnr(imHR[region], im_bicubic[region])
+    PSNR_result = compare_psnr(imHR[region], im_result[region])
+    PSNR_blending = compare_psnr(imHR[region], im_blending[region])
     PSNR_blending = max(PSNR_result, PSNR_blending)
-
+    # Save RAISR reconstruction 
     createFolder('./results/')
-    cv2.imwrite('results/' + os.path.splitext(os.path.basename(image))[0] + '_result.bmp', result_RAISR)
+    cv2.imwrite('results/' + os.path.splitext(os.path.basename(filelist[0][image]))[0] + '_result.bmp', result_RAISR)
     psnrRAISR.append(PSNR_result)
     psnrBicubic.append(PSNR_bicubic)
     psnrBlending.append(PSNR_blending)
@@ -203,6 +247,5 @@ Bicubic_psnrmean = np.array(psnrBicubic).mean()
 
 print('\r', end='')
 print('' * 60, end='')
-print('\r RAISR PSNR of '+ testPath +' is ' + str(RAISR_psnrmean))
-print('\r Bicubic PSNR of '+ testPath +' is ' + str(Bicubic_psnrmean))
-
+print('\r RAISR PSNR of '+ testLRPath +' is ' + str(RAISR_psnrmean))
+print('\r Bicubic PSNR of '+ testLRPath +' is ' + str(Bicubic_psnrmean))
